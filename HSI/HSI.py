@@ -308,11 +308,20 @@ class Cube:
     '''
 
 
+    # not tested yet
     def load_and_combine_cubes(self, base_dir, prefix, start_num, end_num, output_folder):
 
+        import os
+        import numpy as np
+        import spectral as spy
+
+        # -------------------------------------------------
+        # HDR parser
+        # -------------------------------------------------
         def parse_hdr(hdr_path):
-            """Read full ENVI header into dictionary."""
+
             meta = {}
+
             with open(hdr_path, "r") as f:
                 lines = f.readlines()
 
@@ -324,32 +333,42 @@ class Cube:
             return meta
 
 
+        # -------------------------------------------------
+        # HDR writer
+        # -------------------------------------------------
         def write_envi_hdr(hdr_path, meta):
-            """Write full ENVI header dictionary."""
+
             with open(hdr_path, "w") as f:
 
                 f.write("ENVI\n")
 
-                # important fields first
                 ordered = [
-                    "samples","lines","bands",
-                    "header offset","file type",
-                    "data type","interleave","byte order"
+                    "samples",
+                    "lines",
+                    "bands",
+                    "header offset",
+                    "file type",
+                    "data type",
+                    "interleave",
+                    "byte order"
                 ]
 
                 for k in ordered:
                     if k in meta:
                         f.write(f"{k} = {meta[k]}\n")
 
-                # write remaining metadata
-                for k,v in meta.items():
+                for k, v in meta.items():
                     if k not in ordered:
                         f.write(f"{k} = {v}\n")
 
 
+        # -------------------------------------------------
+        # Find cube folders
+        # -------------------------------------------------
         available_folders = []
 
         for i in range(start_num, end_num + 1):
+
             folder_name = f"{prefix}-{i}"
             folder_path = os.path.join(base_dir, folder_name)
 
@@ -364,11 +383,22 @@ class Cube:
             print("No valid folders found.")
             return
 
+
+        # -------------------------------------------------
+        # Storage
+        # -------------------------------------------------
         all_cubes = []
         meta = None
 
         acquisition_times = []
 
+        combined_lcf_lines = []
+        combined_times_lines = []
+
+
+        # -------------------------------------------------
+        # Load cubes
+        # -------------------------------------------------
         for num, folder_path in available_folders:
 
             print(f"Loading folder {num}: {folder_path}")
@@ -377,7 +407,6 @@ class Cube:
 
             hdr_full = os.path.join(folder_path, cube_obj.hdr)
 
-            # read hdr metadata
             hdr_meta = parse_hdr(hdr_full)
 
             img = spy.open_image(hdr_full)
@@ -385,49 +414,78 @@ class Cube:
 
             print("Cube shape:", cube.shape)
 
-            # keep metadata from first cube
+            # store metadata from first cube
             if meta is None:
                 meta = hdr_meta.copy()
 
-            # collect acquisition times
             if "acquisition time" in hdr_meta:
                 acquisition_times.append(hdr_meta["acquisition time"])
 
             all_cubes.append(cube)
 
 
-        # -------------------------
-        # merge cubes
-        # -------------------------
+            # ---------------------------------
+            # Merge LCF
+            # ---------------------------------
+            if hasattr(cube_obj, "lcf_file") and cube_obj.lcf_file:
+
+                lcf_path = os.path.join(folder_path, cube_obj.lcf_file)
+
+                if os.path.exists(lcf_path):
+
+                    with open(lcf_path, "r") as f:
+                        combined_lcf_lines.extend(f.readlines())
+
+
+            # ---------------------------------
+            # Merge TIMES
+            # ---------------------------------
+            if hasattr(cube_obj, "times_file") and cube_obj.times_file:
+
+                times_path = os.path.join(folder_path, cube_obj.times_file)
+
+                if os.path.exists(times_path):
+
+                    with open(times_path, "r") as f:
+                        combined_times_lines.extend(f.readlines())
+
+
+        # -------------------------------------------------
+        # Merge cubes vertically
+        # -------------------------------------------------
         combined_cube = np.concatenate(all_cubes, axis=0)
 
         final_lines = combined_cube.shape[0]
-        samples     = combined_cube.shape[1]
-        bands       = combined_cube.shape[2]
+        samples = combined_cube.shape[1]
+        bands = combined_cube.shape[2]
 
-        print("Merged shape:", combined_cube.shape)
+        print("Merged cube shape:", combined_cube.shape)
 
-        # -------------------------
-        # update metadata
-        # -------------------------
+
+        # -------------------------------------------------
+        # Update metadata
+        # -------------------------------------------------
         meta["lines"] = final_lines
         meta["samples"] = samples
         meta["bands"] = bands
 
-        # acquisition time conflict handling
         if len(acquisition_times) > 1:
             meta["acquisition time"] = f"{acquisition_times[0]} to {acquisition_times[-1]}"
 
 
-        # -------------------------
-        # save cube
-        # -------------------------
+        # -------------------------------------------------
+        # Save output files
+        # -------------------------------------------------
         os.makedirs(output_folder, exist_ok=True)
 
         dat_path = os.path.join(output_folder, "combined_cube.bil")
         hdr_path = os.path.join(output_folder, "combined_cube.bil.hdr")
 
-        # preserve datatype
+        lcf_path = os.path.join(output_folder, "combined_cube.lcf")
+        times_path = os.path.join(output_folder, "combined_cube.bil.times")
+
+
+        # preserve original datatype
         dtype_map = {
             "1": np.uint8,
             "2": np.int16,
@@ -437,14 +495,51 @@ class Cube:
             "12": np.uint16
         }
 
-        dtype = dtype_map.get(meta.get("data type","4"), np.float32)
+        dtype = dtype_map.get(meta.get("data type", "4"), np.float32)
 
         combined_cube.astype(dtype).tofile(dat_path)
 
         write_envi_hdr(hdr_path, meta)
 
+
+        # -------------------------------------------------
+        # Save LCF
+        # -------------------------------------------------
+        if combined_lcf_lines:
+
+            with open(lcf_path, "w") as f:
+
+                f.write("# timestamp roll pitch yaw lon lat alt ...\n")
+
+                for line in combined_lcf_lines:
+                    if line.strip() and not line.startswith("#"):
+                        f.write(line)
+
+            print("Saved LCF:", lcf_path)
+
+
+        # -------------------------------------------------
+        # Save TIMES
+        # -------------------------------------------------
+        if combined_times_lines:
+
+            with open(times_path, "w") as f:
+
+                f.write("# time_seconds\n")
+
+                for line in combined_times_lines:
+                    if line.strip() and not line.startswith("#"):
+                        f.write(line)
+
+            print("Saved TIMES:", times_path)
+
+
+        # -------------------------------------------------
+        # Done
+        # -------------------------------------------------
         print("Saved merged cube:", dat_path)
         print("Saved HDR:", hdr_path)
+
 
 
     def Convert_Mat_to_Cube(self, mat_path, out_folder=None):
@@ -893,100 +988,225 @@ class Mat:
         self.envi_to_mat(cube, out_mat, var_name="hsi", save_meta=True)
 
 # used temporarily to modify hdr file with missing informations
-def update_hdr_from_reference(folder_path, reference_hdr):
 
-    import os
+class Temp:
 
-    def read_hdr(path):
-        meta = {}
-        with open(path, "r") as f:
-            lines = f.readlines()
+    def update_hdr_from_reference(self, folder_path, reference_hdr):
 
-        for line in lines:
-            if "=" in line:
-                k, v = line.split("=", 1)
-                meta[k.strip().lower()] = v.strip()
+        import os
 
-        return meta
+        def read_hdr(path):
+            meta = {}
+            with open(path, "r") as f:
+                lines = f.readlines()
 
+            for line in lines:
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    meta[k.strip().lower()] = v.strip()
 
-    def write_hdr(path, meta):
-        with open(path, "w") as f:
-
-            f.write("ENVI\n")
-
-            # preferred order
-            ordered = [
-                "samples",
-                "lines",
-                "bands",
-                "header offset",
-                "file type",
-                "data type",
-                "interleave",
-                "byte order"
-            ]
-
-            for k in ordered:
-                if k in meta:
-                    f.write(f"{k} = {meta[k]}\n")
-
-            for k, v in meta.items():
-                if k not in ordered:
-                    f.write(f"{k} = {v}\n")
+            return meta
 
 
-    # ---------------------------------------------------
-    # find hdr file in folder
-    # ---------------------------------------------------
-    hdr_file = None
+        def write_hdr(path, meta):
+            with open(path, "w") as f:
 
-    for f in os.listdir(folder_path):
-        if f.lower().endswith(".hdr"):
-            hdr_file = os.path.join(folder_path, f)
-            break
+                f.write("ENVI\n")
 
-    if hdr_file is None:
-        print("No HDR file found in folder")
-        return
+                # preferred order
+                ordered = [
+                    "samples",
+                    "lines",
+                    "bands",
+                    "header offset",
+                    "file type",
+                    "data type",
+                    "interleave",
+                    "byte order"
+                ]
 
-    print("Target HDR:", hdr_file)
-    print("Reference HDR:", reference_hdr)
+                for k in ordered:
+                    if k in meta:
+                        f.write(f"{k} = {meta[k]}\n")
 
-
-    # ---------------------------------------------------
-    # read both hdr files
-    # ---------------------------------------------------
-    target_meta = read_hdr(hdr_file)
-    ref_meta = read_hdr(reference_hdr)
-
-
-    # ---------------------------------------------------
-    # fields we should NOT overwrite
-    # ---------------------------------------------------
-    protected_fields = [
-        "lines",
-        "samples",
-        "bands",
-        "header offset"
-    ]
+                for k, v in meta.items():
+                    if k not in ordered:
+                        f.write(f"{k} = {v}\n")
 
 
-    # ---------------------------------------------------
-    # copy missing metadata
-    # ---------------------------------------------------
-    for k, v in ref_meta.items():
+        # ---------------------------------------------------
+        # find hdr file in folder
+        # ---------------------------------------------------
+        hdr_file = None
 
-        if k in protected_fields:
-            continue
+        for f in os.listdir(folder_path):
+            if f.lower().endswith(".hdr"):
+                hdr_file = os.path.join(folder_path, f)
+                break
 
-        if k not in target_meta:
-            target_meta[k] = v
+        if hdr_file is None:
+            print("No HDR file found in folder")
+            return
+
+        print("Target HDR:", hdr_file)
+        print("Reference HDR:", reference_hdr)
 
 
-    # ---------------------------------------------------
-    # write updated hdr
-    # ---------------------------------------------------
-    write_hdr(hdr_file, target_meta)
+        # ---------------------------------------------------
+        # read both hdr files
+        # ---------------------------------------------------
+        target_meta = read_hdr(hdr_file)
+        ref_meta = read_hdr(reference_hdr)
 
-    print("HDR updated successfully.")
+
+        # ---------------------------------------------------
+        # fields we should NOT overwrite
+        # ---------------------------------------------------
+        protected_fields = [
+            "lines",
+            "samples",
+            "bands",
+            "header offset"
+        ]
+
+
+        # ---------------------------------------------------
+        # copy missing metadata
+        # ---------------------------------------------------
+        for k, v in ref_meta.items():
+
+            if k in protected_fields:
+                continue
+
+            if k not in target_meta:
+                target_meta[k] = v
+
+
+        # ---------------------------------------------------
+        # write updated hdr
+        # ---------------------------------------------------
+        write_hdr(hdr_file, target_meta)
+
+        print("HDR updated successfully.")
+
+    def combine_navigation_files(self, root_folder, output_folder):
+
+        import os
+
+        lcf_data = []
+        times_data = []
+
+        # ------------------------------------------------
+        # scan all folders
+        # ------------------------------------------------
+        for root, dirs, files in os.walk(root_folder):
+
+            for f in files:
+
+                file_path = os.path.join(root, f)
+
+                # ----------------------------------------
+                # LCF files
+                # ----------------------------------------
+                if f.lower().endswith(".lcf"):
+
+                    with open(file_path, "r") as fp:
+
+                        for line in fp:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            parts = line.split()
+
+                            try:
+                                t = float(parts[0])
+                                lcf_data.append((t, line, f))
+                            except:
+                                continue
+
+
+                # ----------------------------------------
+                # TIMES files
+                # ----------------------------------------
+                if f.lower().endswith(".bil.times"):
+
+                    with open(file_path, "r") as fp:
+
+                        for line in fp:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            try:
+                                t = float(line)
+                                times_data.append((t, line, f))
+                            except:
+                                continue
+
+
+        if not lcf_data and not times_data:
+            print("No navigation files found.")
+            return
+
+
+        # ------------------------------------------------
+        # sort by timestamp
+        # ------------------------------------------------
+        lcf_data.sort(key=lambda x: x[0])
+        times_data.sort(key=lambda x: x[0])
+
+
+        os.makedirs(output_folder, exist_ok=True)
+
+        lcf_out = os.path.join(output_folder, "combined_navigation.lcf")
+        times_out = os.path.join(output_folder, "combined_navigation.bil.times")
+
+
+        # ------------------------------------------------
+        # write LCF
+        # ------------------------------------------------
+        if lcf_data:
+
+            with open(lcf_out, "w") as f:
+
+                #f.write("# Resonon Pika IR-L+ Navigation File\n")
+                #f.write("# Columns:\n")
+                f.write("timestamp_sec, roll_rad, pitch_rad, yaw_rad, longitude_deg, latitude_deg, altitude_m, vel_east_mps, vel_north_mps, satellites, nav_status, quality_flag, scanline_index, source_file\n")
+
+                for _, line, src in lcf_data:
+
+                    parts = line.split()
+
+                    # convert to comma-separated
+                    new_line = ",".join(parts) + f",{src}\n"
+
+                    f.write(new_line)
+
+            print("Saved LCF:", lcf_out)
+
+
+        # ------------------------------------------------
+        # write TIMES
+        # ------------------------------------------------
+        if times_data:
+
+            with open(times_out, "w") as f:
+
+                #f.write("# Resonon Pika IR-L+ line timestamps\n")
+                #f.write("# Columns:\n")
+                f.write("# timestamp_seconds, source_file\n")
+
+                for _, line, src in times_data:
+
+                    f.write(f"{line},{src}\n")
+
+            print("Saved TIMES:", times_out)
+
+
+        print("Navigation merge complete.")
+        
