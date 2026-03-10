@@ -542,6 +542,18 @@ class HSI_Localization:
         base_time_bil_times = lcf["GPS_Time"].iloc[0]
         print("fist valur of lcf   =  ",base_time_bil_times)
 
+        '''
+        for idx, frame in bil_times.iterrows():
+
+            if idx == 0:
+                bil_times["gps_seconds"].iloc[0] = base_time_bil_times
+            else:
+                bil_times["gps_seconds"].iloc[idx] = bil_times["system_seconds"].iloc[idx] - bil_times["system_seconds"].iloc[idx -1] +   base_time_bil_times
+        '''
+
+        # Much faster of above commneted expression
+        bil_times["gps_seconds"] = ( bil_times["system_seconds"] - bil_times["system_seconds"].iloc[0]) + base_time_bil_times
+
         for _, frame in bil_times.iterrows():
 
             timestamp = frame["gps_seconds"]
@@ -613,7 +625,7 @@ class HSI_Localization:
     # -------------------------------------------------------
 
 
-    def check_time_overlap(self, hsi_time_lcf_file, dji_flight_log):
+    def check_time_overlap(self, hsi_time_lcf_file, dji_flight_log, time_offset):
 
         #hsi_time_lcf_data = pd.read_csv(hsi_time_lcf_file, sep="\t")
         #dji_data = pd.read_csv(dji_flight_log, sep="\t", skiprows=1)
@@ -622,12 +634,12 @@ class HSI_Localization:
         hsi_time_lcf_data = self.tools.load_times_lcf_file_txt(hsi_time_lcf_file)
         
   
-        # Apply time offset
+        
         hsi_time_lcf_data["GPS_Time"] = hsi_time_lcf_data["GPS_Time"]
 
         # Time ranges
-        hsi_min = hsi_time_lcf_data["GPS_Time"].min()
-        hsi_max = hsi_time_lcf_data["GPS_Time"].max()
+        hsi_min = hsi_time_lcf_data["GPS_Time"].min() + time_offset
+        hsi_max = hsi_time_lcf_data["GPS_Time"].max() + time_offset
 
         dji_min = dji_data.iloc[:,0].min()
         dji_max = dji_data.iloc[:,0].max()
@@ -810,6 +822,11 @@ class HSI_Localization:
             output_path,
             "HSI_Path_Synch_LCF_DJI.txt"
         )
+        print(f"total length of kml = {len(kml_points)}")
+        print(f"total length of output_full_dji = {len(output_full_dji)}")
+        
+
+
 
         self.tools.save_to_kml(kml_points, output_path)
 
@@ -841,10 +858,11 @@ class HSI_Localization:
             file_numbers
         )
 
-        '''
+        
         hsi_navigation, dji_data = self.check_time_overlap(
             hsi_synch_file,
-            dji_flight_log
+            dji_flight_log,
+            time_offset
         )
     
 
@@ -855,7 +873,7 @@ class HSI_Localization:
             output_path,
             time_offset
         )
-        '''
+        
         print("Pipeline completed")
 
 
@@ -879,8 +897,8 @@ def Data_Process_Set(
 
     if DEF_DATASET_16072025_S1_ROW1:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_1_to_11.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_1_11.bil.times"
         dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S1_Row1"
@@ -890,10 +908,10 @@ def Data_Process_Set(
   
         time_offset = 119.265
 
-    elif DEF_DATASET_16072025_S1_ROW1:
+    elif DEF_DATASET_16072025_S1_ROW2:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_1_to_11.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_1_11.bil.times"
         dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S1_Row2"
@@ -905,8 +923,8 @@ def Data_Process_Set(
 
     elif DEF_DATASET_16072025_S1_ROW3:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_1_to_11.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_1_11.bil.times"
         dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S1_Row3"
@@ -916,8 +934,8 @@ def Data_Process_Set(
 
     elif DEF_DATASET_16072025_S1_ROW4:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_1_to_11.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_1_11.bil.times"
         dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S1_Row4"
@@ -927,32 +945,35 @@ def Data_Process_Set(
 
     elif DEF_DATASET_16072025_S2_ROW2:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation.bil.times"
-        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
-            
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_13_to_21.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_13_21.bil.times"
+        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[16-16-05]\DJIFlightRecord_2025-07-16_[16-16-05].txt"
+           
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S2_Row2"
         prefix="RS_25HeritageWhtLL_Pika IR L+_"
         file_numbers=[13,14,15,16]   # None = all files
-        time_offset = 0.0
+        #file_numbers=[13]   # None = all files
+        
+        time_offset = 120.77
 
     elif DEF_DATASET_16072025_S2_ROW3:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
-        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_13_to_21.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_13_21.bil.times"
+        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\\DJIFlightRecord_2025-07-16_[16-16-05]\DJIFlightRecord_2025-07-16_[16-16-05].txt"
             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S2_Row3"
         prefix="RS_25HeritageWhtLL_Pika IR L+_"
         file_numbers=[17,18,19,20]   # None = all files
-        time_offset = 119.265
+        time_offset = 120.77
 
     elif DEF_DATASET_16072025_S2_ROW4:
         
-        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.lcf"
-        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation.bil.times"
-        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[15-49-28]\DJIFlightRecord_2025-07-16_[15-49-28].txt"
-            
+        lcf_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\combined_navigation_13_to_21.lcf"
+        bil_folder=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\Combined_navigation_13_21.bil.times"
+        dji_file=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\01-DJI_Drone_RC4APP_Extracted\DJIFlightRecord_2025-07-16_[16-16-05]\DJIFlightRecord_2025-07-16_[16-16-05].txt"
+           
+             
         output_path=r"D:\00-Workspace(NB)\00-Workspace(UoR)\00-Data(Field)\2025\01-AAFC(Raju)\01-Processed_Data\16072025_Combined\1607_S2_Row4"
         prefix="RS_25HeritageWhtLL_Pika IR L+_"
         file_numbers=[21]   # None = all files
