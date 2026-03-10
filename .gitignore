@@ -1,0 +1,4 @@
+# Ignore Python virtual environments
+__pycache__/
+.vscode/
+.git/
