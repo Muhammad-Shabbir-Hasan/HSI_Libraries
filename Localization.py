@@ -17,11 +17,14 @@ import os
 
 class Localization_Tools:
 
+
+    def save_txt(self, data, output_path, filename):
+
     # -------------------------------------------------------
     # GENERIC TXT SAVE FUNCTION
     # -------------------------------------------------------
 
-    def save_txt(self, data, output_path, filename):
+
 
         if isinstance(data, list):
             df = pd.DataFrame(data)
@@ -39,11 +42,12 @@ class Localization_Tools:
         return file_path
 
 
+
+    def save_to_kml(self, path_points, output_path):
+
     # -------------------------------------------------------
     # SAVE FLIGHT PATH TO KML
     # -------------------------------------------------------
-
-    def save_to_kml(self, path_points, output_path):
 
         kml = simplekml.Kml()
 
@@ -131,12 +135,10 @@ class Localization_Tools:
         return dji
 
 
-
+    def haversine(self, lat1, lon1, lat2, lon2):
     # ---------------------------------------------
     # Distance function (Haversine)
     # ---------------------------------------------
-
-    def haversine(self, lat1, lon1, lat2, lon2):
 
         R = 6371000
 
@@ -152,8 +154,6 @@ class Localization_Tools:
         c = 2*np.arctan2(np.sqrt(a), np.sqrt(1-a))
 
         return R*c
-
-
 
     def load_times_lcf_file_txt(self, times_lcf_file):
 
@@ -250,7 +250,6 @@ class Localization_Tools:
 
         return bil_times
 
-
     def load_lcf_file(self, lcf_file, prefix):
 
         # ---------------------------------------------
@@ -319,6 +318,56 @@ class Localization_Tools:
 
         return lcf_data
 
+    def load_hsi_LCF_DJI_synch_file(self, synch_file, prefix=None):
+
+
+
+        # ---------------------------------------------
+        # Load synchronization file
+        # ---------------------------------------------
+
+        synch_data = pd.read_csv(synch_file, sep="\t")
+
+        # ---------------------------------------------
+        # Ensure all columns except source_file are numeric
+        # ---------------------------------------------
+
+        for col in synch_data.columns:
+
+            if col != "source_file":
+                synch_data[col] = pd.to_numeric(synch_data[col], errors="coerce")
+
+        # ---------------------------------------------
+        # Filter by prefix if provided
+        # ---------------------------------------------
+
+        if prefix is not None and "source_file" in synch_data.columns:
+
+            print("Filtering prefix:", prefix)
+
+            synch_data = synch_data[
+                synch_data["source_file"].str.startswith(prefix)
+            ]
+
+        # ---------------------------------------------
+        # Sort by gps_seconds if available
+        # ---------------------------------------------
+
+        if "gps_seconds" in synch_data.columns:
+
+            synch_data = synch_data.sort_values("gps_seconds").reset_index(drop=True)
+
+        # ---------------------------------------------
+        # Print preview (optional)
+        # ---------------------------------------------
+
+        #print("\nHSI Synch Data (Top 3 rows):")
+        #print(synch_data.head(3))
+
+        #print("\nColumn types:")
+        #print(synch_data.dtypes)
+
+        return synch_data
 
     def find_closest_dji_points(self, time_lcf_file, dji_file, output_path, top_n=5):
 
@@ -390,10 +439,6 @@ class Localization_Tools:
 
         return closest
 
-
-
-
-
     def undersample_kml_points(self, input_kml, output_kml, target_points=9500):
 
         import xml.etree.ElementTree as ET
@@ -449,7 +494,69 @@ class Localization_Tools:
         print("Saved new Google-Earth compatible KML:")
         print(output_kml)
 
-        
+
+    def Synch_HSI_DJI_LCF_to_mat(self, txt_file, output_mat_file):
+
+        import pandas as pd
+        import numpy as np
+        from scipy.io import savemat
+
+        # ---------------------------------------------
+        # Load TXT file
+        # ---------------------------------------------
+        #df = pd.read_csv(txt_file, sep="\t")
+        df = self.load_hsi_LCF_DJI_synch_file(txt_file)
+
+        print("\nLoaded TXT (Top 3 rows):")
+        print(df.head(3))
+
+        # ---------------------------------------------
+        # FORCE numeric conversion (VERY IMPORTANT)
+        # ---------------------------------------------
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # ---------------------------------------------
+        # Convert HSI angles (rad → deg)
+        # ---------------------------------------------
+        for col in ["roll_rad", "pitch_rad", "yaw_rad"]:
+            if col in df.columns:
+                df[col.replace("_rad", "_deg")] = np.degrees(df[col])
+
+        # ---------------------------------------------
+        # Prepare MAT dictionary
+        # ---------------------------------------------
+        mat_dict = {}
+
+        for col in df.columns:
+
+            # skip completely empty columns
+            if df[col].isna().all():
+                continue
+
+            # save everything numeric
+            mat_dict[col] = df[col].to_numpy(dtype=np.float64)
+
+        # ---------------------------------------------
+        # Debug: show saved columns
+        # ---------------------------------------------
+        print("\nColumns saved to MAT:")
+        for k in mat_dict.keys():
+            print(k)
+
+
+        output_mat_file = os.path.join(output_mat_file, "HSI_Path_Synch_LCF_DJI.mat")
+        # ---------------------------------------------
+        # Save MAT
+        # ---------------------------------------------
+        savemat(output_mat_file, mat_dict)
+
+        print("\nSaved MAT file:", output_mat_file)
+
+        return mat_dict
+
+
+
 
 class HSI_Localization:
 
