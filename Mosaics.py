@@ -78,9 +78,6 @@ class Mosaics_Tools:
         return gps_plots
 
 
-
-
-
     def create_orthomosaic_mask_utm(self, txt_file, output_folder, resolution=0.1):
 
         import pandas as pd
@@ -152,7 +149,6 @@ class Mosaics_Tools:
         tifffile.imwrite(tif_path, raster, photometric="rgb")
 
         print("Saved:", tif_path)
-
 
     '''
     def export_scanlines_geojson(self, txt_file, output_folder):
@@ -312,7 +308,50 @@ class Mosaics_Tools:
         print("Points saved:", point_file)
 
 
+    def pixel_geolocation_mat_to_jpg(self, mat_file, output_folder):
 
+        import h5py
+        import numpy as np
+        from PIL import Image
+        import os
+
+        print("Loading MAT file...")
+
+        with h5py.File(mat_file, 'r') as f:
+            geo_data = np.array(f["geo_data"])  # shape: (lines, pixels, 3)
+
+        print("Data shape:", geo_data.shape)
+
+        # -----------------------------------------
+        # extract class layer
+        # -----------------------------------------
+
+        class_map = geo_data[:, :, 2]
+
+        # -----------------------------------------
+        # create RGB image
+        # -----------------------------------------
+
+        height, width = class_map.shape
+
+        img = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # plot pixels (class > 0)
+        mask = class_map > 0
+
+        img[mask] = [255, 0, 0]   # red for plots
+
+        # background remains black
+
+        # -----------------------------------------
+        # save image
+        # -----------------------------------------
+
+        output_path = os.path.join(output_folder, "orthomosaic_preview.jpg")
+
+        Image.fromarray(img).save(output_path)
+
+        print("JPG saved:", output_path)
 
 
 
@@ -754,3 +793,18 @@ class Mosaics:
         self.mosaics_tools.export_scanlines_and_points_geojson(Pixel_Geo_Location_Path, Output_Path)
 
         print("Pipeline finished successfully")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
