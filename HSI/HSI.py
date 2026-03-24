@@ -315,6 +315,7 @@ class Cube:
         import numpy as np
         import spectral as spy
 
+
         # -------------------------------------------------
         # HDR parser
         # -------------------------------------------------
@@ -393,7 +394,10 @@ class Cube:
         acquisition_times = []
 
         combined_lcf_lines = []
-        combined_times_lines = []
+        combined_times = []
+
+        first_gps_time = None
+        first_sys_time = None
 
 
         # -------------------------------------------------
@@ -414,7 +418,6 @@ class Cube:
 
             print("Cube shape:", cube.shape)
 
-            # store metadata from first cube
             if meta is None:
                 meta = hdr_meta.copy()
 
@@ -427,27 +430,55 @@ class Cube:
             # ---------------------------------
             # Merge LCF
             # ---------------------------------
-            if hasattr(cube_obj, "lcf_file") and cube_obj.lcf_file:
+            if cube_obj.lcf_file:
 
-                lcf_path = os.path.join(folder_path, cube_obj.lcf_file)
+                lcf_file = os.path.join(folder_path, cube_obj.lcf_file)
 
-                if os.path.exists(lcf_path):
+                if os.path.exists(lcf_file):
 
-                    with open(lcf_path, "r") as f:
-                        combined_lcf_lines.extend(f.readlines())
+                    with open(lcf_file) as f:
+
+                        for line in f:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            parts = line.split()
+
+                            gps = float(parts[0])
+
+                            if first_gps_time is None:
+                                first_gps_time = gps
+
+                            combined_lcf_lines.append(line + "\n")
 
 
             # ---------------------------------
             # Merge TIMES
             # ---------------------------------
-            if hasattr(cube_obj, "times_file") and cube_obj.times_file:
+            if cube_obj.times_file:
 
-                times_path = os.path.join(folder_path, cube_obj.times_file)
+                times_file = os.path.join(folder_path, cube_obj.times_file)
 
-                if os.path.exists(times_path):
+                if os.path.exists(times_file):
 
-                    with open(times_path, "r") as f:
-                        combined_times_lines.extend(f.readlines())
+                    with open(times_file) as f:
+
+                        for line in f:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            sys_time = float(line)
+
+                            if first_sys_time is None:
+                                first_sys_time = sys_time
+
+                            combined_times.append((sys_time, cube_obj.times_file))
 
 
         # -------------------------------------------------
@@ -485,7 +516,6 @@ class Cube:
         times_path = os.path.join(output_folder, "combined_cube.bil.times")
 
 
-        # preserve original datatype
         dtype_map = {
             "1": np.uint8,
             "2": np.int16,
@@ -509,37 +539,36 @@ class Cube:
 
             with open(lcf_path, "w") as f:
 
-                f.write("# timestamp roll pitch yaw lon lat alt ...\n")
+                f.write("# timestamp roll pitch yaw longitude latitude altitude vel_east vel_north satellites nav_status flag frame\n")
 
                 for line in combined_lcf_lines:
-                    if line.strip() and not line.startswith("#"):
-                        f.write(line)
+                    f.write(line)
 
             print("Saved LCF:", lcf_path)
 
 
         # -------------------------------------------------
-        # Save TIMES
+        # Save TIMES with GPS conversion
         # -------------------------------------------------
-        if combined_times_lines:
+        if combined_times:
+
+            offset = first_gps_time - first_sys_time
 
             with open(times_path, "w") as f:
 
-                f.write("# time_seconds\n")
+                f.write("# system_seconds,gps_seconds,source_file\n")
 
-                for line in combined_times_lines:
-                    if line.strip() and not line.startswith("#"):
-                        f.write(line)
+                for sys_time, src in combined_times:
+
+                    gps_time = sys_time + offset
+
+                    f.write(f"{sys_time},{gps_time},{src}\n")
 
             print("Saved TIMES:", times_path)
 
 
-        # -------------------------------------------------
-        # Done
-        # -------------------------------------------------
         print("Saved merged cube:", dat_path)
         print("Saved HDR:", hdr_path)
-
 
 
     def Convert_Mat_to_Cube(self, mat_path, out_folder=None):
@@ -884,7 +913,6 @@ class Mat:
 
 
 
-
     def load_and_display_mat(self, mat_path):
 
         print(f"\nLoading MAT file: {mat_path}\n")
@@ -952,9 +980,14 @@ class Mat:
         # RGB preview
         if bands >= 3:
 
-            r = cube[:, :, int(bands*0.6)]
-            g = cube[:, :, int(bands*0.4)]
-            b = cube[:, :, int(bands*0.2)]
+            #r = cube[:, :, int(bands*0.6)]
+            #g = cube[:, :, int(bands*0.4)]
+            #b = cube[:, :, int(bands*0.2)]
+            
+            r = cube[:, :, int(380)]
+            g = cube[:, :, int(200)]
+            b = cube[:, :, int(50)]
+            
 
             rgb = np.stack([r, g, b], axis=2)
             rgb = (rgb - rgb.min()) / (rgb.max() - rgb.min())
@@ -966,6 +999,111 @@ class Mat:
             plt.show()
 
         print("\nFinished.\n")
+
+        return cube, meta
+
+
+    def mat_to_rgb_jpg(self, mat_path, r_band, g_band, b_band, output_folder):
+
+        import numpy as np
+        import scipy.io
+        import h5py
+        import os
+        from PIL import Image
+
+        print(f"\nLoading MAT file: {mat_path}\n")
+
+        data = {}
+        meta = None
+
+        # -----------------------------------------
+        # Load MAT file
+        # -----------------------------------------
+
+        try:
+            data = scipy.io.loadmat(mat_path)
+            mat_type = "MATLAB v7"
+
+        except:
+            mat_type = "MATLAB v7.3 (HDF5)"
+
+            with h5py.File(mat_path, "r") as f:
+
+                for key in f.keys():
+                    if isinstance(f[key], h5py.Dataset):
+                        data[key] = np.array(f[key])
+
+                if "envi_hdr" in f:
+                    meta = {}
+                    for k, v in f["envi_hdr"].attrs.items():
+                        meta[k] = v
+
+        print("MAT type:", mat_type)
+
+        # -----------------------------------------
+        # Find 3D cube
+        # -----------------------------------------
+
+        cube = None
+
+        for k in data.keys():
+            if isinstance(data[k], np.ndarray) and data[k].ndim == 3:
+                cube = data[k]
+                cube_name = k
+                break
+
+        if cube is None:
+            print("No 3D cube found.")
+            return
+
+        print(f"Cube variable: {cube_name}")
+        print("Shape:", cube.shape)
+
+        lines, samples, bands = cube.shape
+
+        # -----------------------------------------
+        # Validate bands
+        # -----------------------------------------
+
+        if max(r_band, g_band, b_band) >= bands:
+            print("Error: band index out of range")
+            return
+
+        # -----------------------------------------
+        # Extract RGB bands
+        # -----------------------------------------
+
+        r = cube[:, :, r_band]
+        g = cube[:, :, g_band]
+        b = cube[:, :, b_band]
+
+        rgb = np.stack([r, g, b], axis=2)
+
+        # -----------------------------------------
+        # Normalize to 0–255
+        # -----------------------------------------
+
+        rgb = rgb.astype(np.float32)
+
+        rgb_min = np.nanmin(rgb)
+        rgb_max = np.nanmax(rgb)
+
+        rgb = (rgb - rgb_min) / (rgb_max - rgb_min + 1e-8)
+        rgb = (rgb * 255).astype(np.uint8)
+
+        # -----------------------------------------
+        # Save JPG
+        # -----------------------------------------
+
+        output_path = os.path.join(output_folder, "rgb_preview.jpg")
+
+        Image.fromarray(rgb).save(output_path)
+
+        print("RGB image saved:", output_path)
+
+        return cube, meta
+
+
 
     def Convert_Cube_to_Mat(self, in_path) :
 
@@ -991,6 +1129,7 @@ class Mat:
 
 class Temp:
 
+    #it was used to add missing information in hdr file from reference File
     def update_hdr_from_reference(self, folder_path, reference_hdr):
 
         import os
@@ -1089,6 +1228,146 @@ class Temp:
 
         print("HDR updated successfully.")
 
+
+
+    # temporairly use to merge all lcf and bil.times files in single file
+    
+
+    def combine_navigation_files(self, root_folder, output_folder):
+
+        import os
+
+        lcf_data = []
+        times_data = []
+
+        first_gps_time = None
+        first_sys_time = None
+
+
+        # ------------------------------------------------
+        # scan all folders
+        # ------------------------------------------------
+        for root, dirs, files in os.walk(root_folder):
+
+            for f in files:
+
+                file_path = os.path.join(root, f)
+
+                # ----------------------------------------
+                # LCF files
+                # ----------------------------------------
+                if f.lower().endswith(".lcf"):
+
+                    with open(file_path, "r") as fp:
+
+                        for line in fp:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            parts = line.split()
+
+                            try:
+                                t = float(parts[0])
+
+                                if first_gps_time is None:
+                                    first_gps_time = t
+
+                                lcf_data.append((t, line, f))
+                            except:
+                                continue
+
+
+                # ----------------------------------------
+                # TIMES files
+                # ----------------------------------------
+                if f.lower().endswith(".bil.times"):
+
+                    with open(file_path, "r") as fp:
+
+                        for line in fp:
+
+                            line = line.strip()
+
+                            if not line or line.startswith("#"):
+                                continue
+
+                            try:
+                                t = float(line)
+
+                                if first_sys_time is None:
+                                    first_sys_time = t
+
+                                times_data.append((t, line, f))
+                            except:
+                                continue
+
+
+        if not lcf_data and not times_data:
+            print("No navigation files found.")
+            return
+
+
+        # ------------------------------------------------
+        # sort by timestamp
+        # ------------------------------------------------
+        lcf_data.sort(key=lambda x: x[0])
+        times_data.sort(key=lambda x: x[0])
+
+
+        os.makedirs(output_folder, exist_ok=True)
+
+        lcf_out = os.path.join(output_folder, "combined_navigation.lcf")
+        times_out = os.path.join(output_folder, "combined_navigation.bil.times")
+
+
+        # ------------------------------------------------
+        # write LCF
+        # ------------------------------------------------
+        if lcf_data:
+
+            with open(lcf_out, "w") as f:
+
+                f.write("timestamp_sec, roll_rad, pitch_rad, yaw_rad, longitude_deg, latitude_deg, altitude_m, vel_east_mps, vel_north_mps, satellites, nav_status, quality_flag, scanline_index, source_file\n")
+
+                for _, line, src in lcf_data:
+
+                    parts = line.split()
+
+                    new_line = ",".join(parts) + f",{src}\n"
+
+                    f.write(new_line)
+
+            print("Saved LCF:", lcf_out)
+
+
+        # ------------------------------------------------
+        # write TIMES (with GPS_Time column)
+        # ------------------------------------------------
+        if times_data:
+
+            offset = first_gps_time - first_sys_time
+
+            with open(times_out, "w") as f:
+
+                f.write("system_seconds,gps_seconds,source_file\n")
+
+                for sys_time, line, src in times_data:
+
+                    gps_time = sys_time + offset
+
+                    f.write(f"{sys_time},{gps_time},{src}\n")
+
+            print("Saved TIMES:", times_out)
+
+
+        print("Navigation merge complete.")
+
+
+
+    '''
     def combine_navigation_files(self, root_folder, output_folder):
 
         import os
@@ -1209,4 +1488,4 @@ class Temp:
 
 
         print("Navigation merge complete.")
-        
+    '''    

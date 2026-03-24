@@ -1,4 +1,5 @@
 # Ignore Python virtual environments
 __pycache__/
+.vscode/
 AAFC_UAV/
 .git/
