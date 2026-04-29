@@ -1,4 +1,5 @@
 # Ignore Python virtual environments
 __pycache__/
+Intermediate_date/
 .vscode/
 .git/
