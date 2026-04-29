@@ -558,6 +558,84 @@ class Localization_Tools:
 
 
 
+    def convert_plot_csv_to_txt(self, input_csv, output_folder):
+
+        import pandas as pd
+        import os
+
+        # ---------------------------------------------
+        # Load CSV
+        # ---------------------------------------------
+        df = pd.read_csv(input_csv)
+
+        # ---------------------------------------------
+        # Rename columns (based on your description)
+        # Adjust if needed after checking df.columns
+        # ---------------------------------------------
+        df.columns = df.columns.str.strip()
+
+        plot_col = df.columns[2]   # Column C → Plot ID
+        index_col = df.columns[3]  # Column D → Index
+        lon_col = df.columns[0]    # assuming first column = longitude
+        lat_col = df.columns[1]    # assuming second column = latitude
+
+        # ---------------------------------------------
+        # Remove index 4 (center point)
+        # ---------------------------------------------
+        df = df[df[index_col] != 4]
+
+        # ---------------------------------------------
+        # Group by Plot ID
+        # ---------------------------------------------
+        output_rows = []
+
+        for plot_id, group in df.groupby(plot_col):
+
+            # Sort by index to maintain consistent order
+            group = group.sort_values(index_col)
+
+            if len(group) != 4:
+                print(f"Skipping Plot {plot_id}, does not have 4 points")
+                continue
+
+            points = group[[lon_col, lat_col]].values
+
+            output_rows.append([
+                plot_id,
+                points[0][0], points[0][1],
+                points[1][0], points[1][1],
+                points[2][0], points[2][1],
+                points[3][0], points[3][1]
+            ])
+
+        # ---------------------------------------------
+        # Create output dataframe
+        # ---------------------------------------------
+        output_df = pd.DataFrame(output_rows, columns=[
+            "Plot_Number",
+            "Point1_long", "Point1_lat",
+            "Point2_long", "Point2_lat",
+            "Point3_long", "Point3_lat",
+            "Point4_long", "Point4_lat"
+        ])
+
+        # ---------------------------------------------
+        # Save TXT
+        # ---------------------------------------------
+        os.makedirs(output_folder, exist_ok=True)
+
+        output_file = os.path.join(output_folder, "Plot_Location_UTM13.txt")
+
+        output_df.to_csv(output_file, sep="\t", index=False)
+
+        print("\nSaved:", output_file)
+        print(output_df.head())
+
+        return output_df
+
+
+
+
 class HSI_Localization:
 
     def __init__(self):
