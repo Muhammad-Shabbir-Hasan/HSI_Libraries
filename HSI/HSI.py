@@ -72,6 +72,8 @@ class Cube:
             print("❌ Error: .bil or .hdr file not found in the specified folder.")
             self.cube = None
 
+        return self.cube
+
 
     def Show_Centered_Freq (self, cube):
     
@@ -1124,6 +1126,110 @@ class Mat:
         print (f" out45mat = {out_mat}")
 
         self.envi_to_mat(cube, out_mat, var_name="hsi", save_meta=True)
+
+
+
+    def read_mat_file(self, mat_file, variable):
+
+        import numpy as np
+
+        print("Loading MAT file:", mat_file)
+
+        try:
+            import h5py
+
+            with h5py.File(mat_file, 'r') as f:
+
+                if variable not in f:
+                    raise KeyError(f"{variable} not found in MAT file")
+
+                data = np.array(f[variable])
+
+            print("Loaded using h5py (v7.3)")
+
+        except:
+
+            import scipy.io
+
+            mat = scipy.io.loadmat(mat_file)
+
+            if variable not in mat:
+                raise KeyError(f"{variable} not found in MAT file")
+
+            data = mat[variable]
+
+            print("Loaded using scipy (v7)")
+
+        print("Data shape:", data.shape)
+
+        return data
+
+
+       
+
+
+
+
+        return mat_data
+
+
+    def save_mat_file(self, data, output_mat_file, variable, use_hdf5=True):
+
+        import numpy as np
+        import os
+
+        print("Saving MAT file:", output_mat_file)
+
+        # ensure folder exists
+        os.makedirs(os.path.dirname(output_mat_file), exist_ok=True)
+
+        try:
+            # -----------------------------------------
+            # Save as MATLAB v7.3 (HDF5)
+            # -----------------------------------------
+
+            if use_hdf5:
+
+                import h5py
+
+                with h5py.File(output_mat_file, "w") as f:
+
+                    if isinstance(data, dict):
+
+                        for key, value in data.items():
+                            f.create_dataset(key, data=np.array(value))
+
+                    else:
+                        f.create_dataset(variable, data=np.array(data))
+
+                print("Saved using h5py (v7.3)")
+
+            else:
+                raise Exception("Force scipy")
+
+        except:
+
+            # -----------------------------------------
+            # Save as MATLAB v7 (fallback)
+            # -----------------------------------------
+
+            import scipy.io
+
+            if isinstance(data, dict):
+                scipy.io.savemat(output_mat_file, data)
+            else:
+                scipy.io.savemat(output_mat_file, {variable: data})
+
+            print("Saved using scipy (v7)")
+
+        # -----------------------------------------
+        # print shape info
+        # -----------------------------------------
+
+        if isinstance(data, np.ndarray):
+            print("Data shape:", data.shape)
+
+        return output_mat_file
 
 # used temporarily to modify hdr file with missing informations
 
